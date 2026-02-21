@@ -1,0 +1,11 @@
+[project]
+name = "nanobotgui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "nanobot-ai==0.1.4",
+    "pyinstaller>=6.19.0",
+    "pyside6==6.8.0",
+]
