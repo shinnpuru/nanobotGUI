@@ -46,13 +46,13 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from nanobot.cli.commands import _create_workspace_templates
+from nanobot.cli.commands import sync_workspace_templates
 from nanobot.config.loader import get_config_path, load_config, save_config
 from nanobot.config.schema import ChannelsConfig, Config, MCPServerConfig
 from nanobot.cron.service import CronService
 from nanobot.cron.types import CronSchedule
 from nanobot.providers.registry import PROVIDERS
-from nanobot.utils.helpers import get_data_path, get_workspace_path
+from nanobot.config.paths import get_data_dir, get_workspace_path
 
 
 APP_STYLE = """
@@ -174,7 +174,7 @@ def _json_pretty(data: object) -> str:
 
 
 def _gui_settings_path() -> Path:
-    return get_data_path() / "gui" / "settings.json"
+    return get_data_dir() / "gui" / "settings.json"
 
 
 def _load_gui_settings() -> dict[str, object]:
@@ -224,7 +224,7 @@ def _run_gateway_process(port: int, log_queue: mp.Queue[str]) -> None:
     try:
         from nanobot.cli.commands import gateway
 
-        gateway(port=port, verbose=False)
+        gateway(port=port, workspace=None, verbose=False, config=None)
     except Exception as exc:
         log_queue.put(f"Gateway process error: {exc}")
         raise
@@ -259,7 +259,7 @@ def run_auto_onboard() -> list[str]:
         logs.append(f"Config created: {config_path}")
 
     workspace = get_workspace_path(config.agents.defaults.workspace)
-    _create_workspace_templates(workspace)
+    sync_workspace_templates(workspace)
     logs.append(f"Workspace ready: {workspace}")
     return logs
 
@@ -304,7 +304,7 @@ class AutoStartManager:
 
     @classmethod
     def _build_plist_content(cls) -> dict:
-        log_dir = get_data_path() / "logs"
+        log_dir = get_data_dir() / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         return {
             "Label": cls.LAUNCH_AGENT_LABEL,
@@ -900,7 +900,7 @@ class MCPPanel(QWidget):
 class CronPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
-        self.service = CronService(get_data_path() / "cron" / "jobs.json")
+        self.service = CronService(get_data_dir() / "cron" / "jobs.json")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -1137,9 +1137,7 @@ class AdvancedPanel(QWidget):
         self.max_iter = QSpinBox()
         self.max_iter.setRange(1, 200)
         self.max_iter.setValue(self.store.config.agents.defaults.max_tool_iterations)
-        self.memory_window = QSpinBox()
-        self.memory_window.setRange(1, 1000)
-        self.memory_window.setValue(self.store.config.agents.defaults.memory_window)
+
         self.temperature = QLineEdit(str(self.store.config.agents.defaults.temperature))
         self.temperature.setPlaceholderText("0.0 - 2.0")
 
@@ -1169,8 +1167,6 @@ class AdvancedPanel(QWidget):
         agent_grid.addWidget(self.temperature, 1, 1)
         agent_grid.addWidget(QLabel("Max Tool Iterations"), 2, 0)
         agent_grid.addWidget(self.max_iter, 2, 1)
-        agent_grid.addWidget(QLabel("Memory Window"), 3, 0)
-        agent_grid.addWidget(self.memory_window, 3, 1)
 
         security_group = QGroupBox("Security Settings")
         security_layout = QVBoxLayout(security_group)
@@ -1218,7 +1214,6 @@ class AdvancedPanel(QWidget):
         try:
             self.store.config.agents.defaults.workspace = self.workspace.text().strip()
             self.store.config.agents.defaults.max_tool_iterations = self.max_iter.value()
-            self.store.config.agents.defaults.memory_window = self.memory_window.value()
             self.store.config.agents.defaults.temperature = float(self.temperature.text().strip())
             self.store.config.tools.restrict_to_workspace = self.restrict_ws.isChecked()
             self.store.config.tools.exec.timeout = self.exec_timeout.value()
@@ -1305,7 +1300,7 @@ class MainWindow(QMainWindow):
         logs = run_auto_onboard()
         self.store.reload()
 
-        data_dir = get_data_path()
+        data_dir = get_data_dir()
         self.top_info = self.statusBar()
         self.top_info.showMessage(
             "Auto onboard completed | "
